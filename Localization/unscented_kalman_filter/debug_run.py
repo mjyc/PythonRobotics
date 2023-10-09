@@ -6,17 +6,17 @@ author: Atsushi Sakai (@Atsushi_twi)
 
 """
 
+import ipdb
+import csv
+from utils.angle import rot_mat_2d
+import scipy.linalg
+import numpy as np
+import matplotlib.pyplot as plt
+import math
 import sys
 import pathlib
 sys.path.append(str(pathlib.Path(__file__).parent.parent.parent))
 
-import math
-
-import matplotlib.pyplot as plt
-import numpy as np
-import scipy.linalg
-
-from utils.angle import rot_mat_2d
 
 # Covariance for UKF simulation
 Q = np.diag([
@@ -150,8 +150,8 @@ def calc_pxz(sigma, x, z_sigma, zb, wc):
 
 def ukf_estimation(xEst, PEst, z, u, wm, wc, gamma):
     #  Predict
-    sigma = generate_sigma_points(xEst, PEst, gamma)
-    sigma = predict_sigma_motion(sigma, u)
+    sigma_point = generate_sigma_points(xEst, PEst, gamma)
+    sigma = predict_sigma_motion(sigma_point, u)
     xPred = (wm @ sigma.T).T
     PPred = calc_sigma_covariance(xPred, sigma, wc, Q)
 
@@ -210,67 +210,33 @@ def setup_ukf(nx):
 
 
 def main():
-    # print(__file__ + " start!!")
-
     nx = 4  # State Vector [x y yaw v]'
     xEst = np.zeros((nx, 1))
     xTrue = np.zeros((nx, 1))
     PEst = np.eye(nx)
-    xDR = np.zeros((nx, 1))  # Dead reckoning
 
     wm, wc, gamma = setup_ukf(nx)
 
-    # history
-    hxEst = xEst
-    hxTrue = xTrue
-    hxDR = xTrue
-    hz = np.zeros((2, 1))
+    file_path = "./data.txt"
+    parsed_data = []
 
-    time = 0.0
+    with open(file_path, 'r') as file:
+        reader = csv.reader(file)
+        for row in reader:
+            parsed_data.append([float(value) for value in row])
 
-    while SIM_TIME >= time:
-        time += DT
-        u = calc_input()
+    for row in parsed_data:
+        time = row[0]
 
-        xTrue, z, xDR, ud = observation(xTrue, xDR, u)
+        z = np.array([[row[5]], [row[6]]])
+        ud = np.array([[row[15]], [row[16]]])
 
         xEst, PEst = ukf_estimation(xEst, PEst, z, ud, wm, wc, gamma)
 
         out_str = str(time) + ","
-        for val in xTrue:
-            out_str += str(val[0]) + ","
-        for val in z:
-            out_str += str(val[0]) + ","
         for val in xEst:
             out_str += str(val[0]) + ","
-        for val in xDR:
-            out_str += str(val[0]) + ","
-        for val in ud:
-            out_str += str(val[0]) + ","
         print(out_str[:-1])
-
-        # store data history
-        hxEst = np.hstack((hxEst, xEst))
-        hxDR = np.hstack((hxDR, xDR))
-        hxTrue = np.hstack((hxTrue, xTrue))
-        hz = np.hstack((hz, z))
-
-        if show_animation:
-            plt.cla()
-            # for stopping simulation with the esc key.
-            plt.gcf().canvas.mpl_connect('key_release_event',
-                    lambda event: [exit(0) if event.key == 'escape' else None])
-            plt.plot(hz[0, :], hz[1, :], ".g")
-            plt.plot(np.array(hxTrue[0, :]).flatten(),
-                     np.array(hxTrue[1, :]).flatten(), "-b")
-            plt.plot(np.array(hxDR[0, :]).flatten(),
-                     np.array(hxDR[1, :]).flatten(), "-k")
-            plt.plot(np.array(hxEst[0, :]).flatten(),
-                     np.array(hxEst[1, :]).flatten(), "-r")
-            plot_covariance_ellipse(xEst, PEst)
-            plt.axis("equal")
-            plt.grid(True)
-            plt.pause(0.001)
 
 
 if __name__ == '__main__':
